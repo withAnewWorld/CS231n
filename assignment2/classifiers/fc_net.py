@@ -2,6 +2,7 @@ from builtins import range
 from builtins import object
 import numpy as np
 
+
 from ..layers import *
 from ..layer_utils import *
 
@@ -78,14 +79,20 @@ class FullyConnectedNet(object):
         dims.insert(0, input_dim)
         dims.append(num_classes)
 
-        for i in range (self.num_layers):
-          self.params['W%d'%(i+1)] = np.random.normal(0, scale=weight_scale, size=(dims[i], dims[i+1]))
-          self.params['b%d'%(i+1)] = np.zeros(dims[i+1])
+        if self.normalization != None:
+          for i in range (self.num_layers):
+            self.params['W%d'%(i+1)] = np.random.normal(0, scale=weight_scale, size=(dims[i], dims[i+1]))
+            self.params['b%d'%(i+1)] = np.zeros(dims[i+1])
+            if i==self.num_layers-1:
+              break
+            self.params['gamma%d'%(i+1)] = np.ones(dims[i+1])
+            self.params['beta%d'%(i+1)] = np.zeros(dims[i+1])
+            
 
-        # self.params['gamma1'] =
-        # self.params['beta1'] = 
-        # self.params['gamma2'] =
-        # self.params['beta2'] =     
+        else:
+          for i in range (self.num_layers):
+            self.params['W%d'%(i+1)] = np.random.normal(0, scale=weight_scale, size=(dims[i], dims[i+1]))
+            self.params['b%d'%(i+1)] = np.zeros(dims[i+1])
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -161,13 +168,25 @@ class FullyConnectedNet(object):
         
         X=X.reshape(X.shape[0],-1)
         N, D = X.shape
-        hidden_layer=[]
-        scores = X
-        for i in range(self.num_layers-1):
-          scores = np.maximum(0, scores.dot(self.params['W%d'%(i+1)])+self.params['b%d'%(i+1)])
-          hidden_layer.append(scores)
+        out = X
+        cache={}
+        dropout_cache={}
+        
+        if self.normalization!=None:
+          for i in range(self.num_layers-1): # affien-bn-relu forward
+            out, cache[i]=affine_bn_relu_forward(out, 
+            self.params['W%d'%(i+1)], self.params['b%d'%(i+1)], 
+            self.params['gamma%d'%(i+1)], self.params['beta%d'%(i+1)], self.bn_params[i])
+            if self.use_dropout: #affine-bn-relu-dropout forward
+              out, dropout_cache[i]= dropout_forward(out, self.dropout_param)  
 
-        scores = scores.dot(self.params['W%d'%(self.num_layers)])+self.params['b%d'%(self.num_layers)]  
+        else:  
+          for i in range(self.num_layers-1): # affine-relu forward
+            out, cache[i]= affine_relu_forward(out, self.params['W%d'%(i+1)], self.params['b%d'%(i+1)])
+            if self.use_dropout: #affine-relu-dropout forward
+              out, dropout_cache[i]= dropout_forward(out, self.dropout_param)    
+            
+        scores, cache[self.num_layers-1] = affine_forward(out, self.params['W%d'%(self.num_layers)], self.params['b%d'%(self.num_layers)])  
         
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -194,40 +213,36 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         
-        scores -= np.max(scores, axis=1, keepdims=True)
-        exp_scores = np.exp(scores)
-        sum_exp_scores = np.tile(np.sum(exp_scores, axis=1, keepdims=True), (1, scores.shape[1]))
-        probs = exp_scores/sum_exp_scores
-        loss_i = -np.log(probs[range(N), y])
-        loss = np.sum(loss_i)
-        loss /= N
-
-        for i in range(self.num_layers):
+        loss, dsmx= softmax_loss(scores, y)
+       
+        for i in range(self.num_layers): #L2 regularization 
           loss += (0.5*self.reg)*np.sum(self.params['W%d'%(i+1)]**2)
 
-        dsmx = probs
-        dsmx[range(N), y] -=1
-        dsmx /=N
+        ##############################backward#######################################  
 
-        grads['b%d'%(self.num_layers)] = np.sum(dsmx, axis=0)
-        grads['W%d'%(self.num_layers)] = hidden_layer[-1].T.dot(dsmx) 
+        dout, grads['W%d'%(self.num_layers)], grads['b%d'%(self.num_layers)]=affine_backward(dsmx, cache[self.num_layers-1])
         grads['W%d'%(self.num_layers)] += self.reg*self.params['W%d'%(self.num_layers)]
-        dhidden= dsmx.dot(self.params['W%d'%(self.num_layers)].T)
-        dhidden[hidden_layer[-1]<=0]=0
-
-        for i in range(self.num_layers-1, 0, -1):
-          grads['b%d'%(i)] = np.sum(dhidden, axis=0)
-          if i-2<0:
-            grads['W%d'%(i)]=X.T.dot(dhidden)
-            grads['W%d'%(i)] += self.reg*self.params['W%d'%(i)]            
-            break
-          grads['W%d'%(i)] = hidden_layer[i-2].T.dot(dhidden)
-          grads['W%d'%(i)] += self.reg*self.params['W%d'%(i)]
-          dhidden=dhidden.dot(self.params['W%d'%(i)].T)
-          dhidden[hidden_layer[i-2]<=0]=0
-
         
+        if self.use_dropout:   
+          for i in range(self.num_layers-1, 0, -1):
+            dout= dropout_backward(dout, dropout_cache[i-1])
+            if self.normalization != None:  #affine-batch_norm-relu-drop_out backward
+              dout, grads['W%d'%(i)], grads['b%d'%(i)], grads['gamma%d'%(i)], grads['beta%d'%(i)] = affine_bn_relu_backward(dout, cache[i-1])
+              grads['W%d'%(i)]+=self.reg*self.params['W%d'%(i)]
+            else:  #affine-relu-drop_out backward
+              dout, grads['W%d'%(i)], grads['b%d'%(i)] = affine_relu_backward(dout, cache[i-1])
+              grads['W%d'%(i)]+=self.reg*self.params['W%d'%(i)]
 
+        elif self.normalization!=None:   # affine-batch_norm-relu backward
+          for i in range(self.num_layers-1, 0, -1):
+            dout, grads['W%d'%(i)], grads['b%d'%(i)], grads['gamma%d'%(i)], grads['beta%d'%(i)] = affine_bn_relu_backward(dout, cache[i-1])
+            grads['W%d'%(i)]+=self.reg*self.params['W%d'%(i)]
+
+        else:    #affine-relu backward
+          for i in range(self.num_layers-1, 0, -1):
+            dout, grads['W%d'%(i)], grads['b%d'%(i)] = affine_relu_backward(dout, cache[i-1])
+            grads['W%d'%(i)]+=self.reg*self.params['W%d'%(i)]
+            
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
