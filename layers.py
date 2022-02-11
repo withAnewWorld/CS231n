@@ -300,6 +300,7 @@ def batchnorm_backward(dout, cache):
     sigma = np.sqrt(var+eps)
     N, D = x.shape    
 
+
     dbeta = np.sum(dout, axis=0)
     dgamma = np.sum(dout*x_hat, axis=0)
     dx_hat=dout*gamma
@@ -348,13 +349,13 @@ def batchnorm_backward_alt(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     gamma, beta, mu, var, eps, x_hat, x = cache
-    N, D = x.shape
+    N, D = dout.shape
 
     dx_hat=gamma*dout
     x_sub_mean=x-mu
 
-    dbeta = np.sum(dout, axis=0)
-    dgamma=np.sum(dout*(x_hat), axis=0)
+    dbeta = np.sum(dout, axis=0, keepdims=True)
+    dgamma=np.sum(dout*(x_hat), axis=0, keepdims=True)
 
     dvar= np.sum(dx_hat*(x_sub_mean)*(-0.5)*((var+eps)**(-1.5)), axis=0)
     dmean = np.sum(dx_hat*(-1/np.sqrt(var+eps)), axis=0)-2*dvar*np.sum(x_sub_mean, axis=0)/N
@@ -818,7 +819,6 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
       for j in range(W):
         out[:, :, i, j], cache[i, j] = batchnorm_forward(x[:,: , i, j], gamma, beta, bn_param)
     
-
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -853,7 +853,7 @@ def spatial_batchnorm_backward(dout, cache):
     dx = np.zeros((N, C, H, W))
     for i in range(H):
       for j in range(W):
-        dx[:,:, i, j], gamma_result, beta_result = batchnorm_backward_alt(dout[:, :, i, j], cache[i, j])
+        dx[:, :, i, j], gamma_result, beta_result = batchnorm_backward_alt(dout[:, :, i, j], cache[i, j])
         dgamma+=gamma_result
         dbeta+=beta_result
 
@@ -895,8 +895,19 @@ def spatial_groupnorm_forward(x, gamma, beta, G, gn_param):
     # and layer normalization!                                                #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    N, C, H, W = x.shape
+    x = x.reshape(N, G, C//G, H, W)
+    out = np.zeros((N, C, H, W))
+    mu=np.mean(x, axis=(2, 3, 4), keepdims=True)
+    var=np.var(x, axis=(2, 3, 4), keepdims=True)
+    x_hat=(x-mu)/np.sqrt(var+eps)
+    x_hat= x_hat.reshape((N, C, H, W))
+    out = gamma*x_hat + beta
 
-    pass
+    out.reshape((N, C, H, W))
+
+    x=x.reshape((N, C, H, W))
+    cache = (x, x_hat, mu, var, gamma, beta, eps, G)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -924,8 +935,24 @@ def spatial_groupnorm_backward(dout, cache):
     # This will be extremely similar to the layer norm implementation.        #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    x, x_hat, mu, var, gamma, beta, eps, G = cache
+    N, C, H, W = dout.shape 
+       
+    dx_hat=gamma*dout
 
-    pass
+    dbeta = np.sum(dout, axis=(0, 2, 3), keepdims=True)
+    dgamma=np.sum(dout*(x_hat), axis=(0, 2, 3), keepdims=True)
+    
+    x=x.reshape((N, G, C//G, H, W))
+    x_sub_mean=x-mu    
+    dx_hat= dx_hat.reshape((N, G, C//G, H, W))
+
+    dvar= np.sum(dx_hat*(x_sub_mean)*(-0.5)*((var+eps)**(-1.5)), axis=(2, 3, 4), keepdims=True)
+    dmean = np.sum(dx_hat*(-1/np.sqrt(var+eps)), axis=(2, 3, 4), keepdims=True)-2*dvar*np.sum(x_sub_mean, axis=(2, 3, 4), keepdims=True)/(C//G*H*W)
+    
+    dx = dx_hat/np.sqrt(var+eps)+2*dvar*(x_sub_mean)/(C//G*H*W)+dmean/(C//G*H*W)
+    
+    dx = dx.reshape((N, C, H, W))
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
