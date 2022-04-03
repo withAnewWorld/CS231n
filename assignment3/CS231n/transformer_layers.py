@@ -1,3 +1,4 @@
+from numpy import iinfo
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -37,8 +38,20 @@ class PositionalEncoding(nn.Module):
         # less than 5 lines of code.                                               #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        
+        i=torch.arange(0, max_len).reshape(max_len, -1)
+        j= 10000**-(torch.arange(0, 1, 2/embed_dim))
+        pe[0, :, torch.arange(0, embed_dim, 2)]= torch.sin(i*j)
+        pe[0, :, torch.arange(1, embed_dim, 2)]= torch.cos(i*j)
 
-        pass
+
+        ##################### naive version ####################################
+
+        # for i in range(int(embed_dim//2)):
+        #   for pos in range(max_len):
+        #     pe[0, pos, 2*i] = math.sin(pos*10000**(-2*i/embed_dim))
+        #     pe[0, pos, 2*i+1] = math.cos(pos*10000**(-(2*i)/embed_dim))
+        
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -69,8 +82,9 @@ class PositionalEncoding(nn.Module):
         # afterward. This should only take a few lines of code.                    #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+  
+        output= x+self.pe[:, :S, :]
+        output = self.dropout(output)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -125,8 +139,10 @@ class MultiHeadAttention(nn.Module):
         # solution is less than 5 lines.                                           #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        self.softmax = nn.Softmax(dim=-1)
+        self.h = num_heads
+        self.drop = nn.Dropout(p=dropout)
+        
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -173,9 +189,55 @@ class MultiHeadAttention(nn.Module):
         #     function masked_fill may come in handy.                              #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        
+        ################## vectorized version ##################################
 
-        pass
+        query = self.query(query).view(N, S, self.h, D//self.h)
+        key = self.key(key).view(N, T, self.h, int(D/self.h))
+        value = self.value(value).view(N, T, self.h, int(D/self.h))
 
+        XQ_i = query.transpose(1, 2)
+        XK_i = key.transpose(1, 2)
+        XV_i = value.transpose(1, 2)
+        Y=torch.empty((N, self.h, T, T))
+
+        alignment=torch.matmul(XQ_i, XK_i.transpose(2, 3))/math.sqrt(D/self.h)
+        if attn_mask != None:
+          alignment = alignment.masked_fill(attn_mask==False, -float('inf'))
+        attention=self.softmax(alignment)
+        Y= self.drop(attention)
+        Y= torch.matmul(Y, XV_i)
+        
+        concat =Y.transpose(1, 2).contiguous().view(N, -1, D)
+        output= self.proj(concat)
+        
+        #########################  Naive version  #############################
+        # 안됨
+
+        # XQ = self.query(query)
+        # XK = self.key(key)
+        # XV = self.value(value)
+
+        # XQ = XQ.reshape((N, S, self.h, D//self.h)).transpose(1, 2)
+        # XK = XK.reshape((N, T, self.h, D//self.h)).transpose(1, 2)
+        # XV = XV.reshape((N, T, self.h, D//self.h)).transpose(1, 2)
+
+        # for n in range(N):
+        #   Y=torch.empty((self.h, T, D//self.h))
+        #   for i in range(self.h):
+        #     XQ_i = XQ[n, i, :, :]
+        #     XK_i = XK[n, i, :, :]
+        #     XV_i = XV[n, i, :, :]
+        #     alignment = torch.matmul(XQ_i, XK_i.T)/math.sqrt(D/self.h)
+        #     if attn_mask != None:
+        #       alignment = alignment.masked_fill(attn_mask==False, -float('inf'))
+        #     attention = self.softmax(alignment)
+        #     Y_i = self.drop(attention)
+        #     Y[i, :, :]=torch.matmul(Y_i, XV_i)
+        #   output[n, :, :] = self.proj(Y.transpose(0, 1).reshape(T, D))
+          
+             
+        
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #

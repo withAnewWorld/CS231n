@@ -147,8 +147,16 @@ class CaptioningRNN:
         # in your implementation, if needed.                                       #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        h0, cache_affine = affine_forward(features, W_proj, b_proj)
+        w2v, cache_embed=word_embedding_forward(captions_in, W_embed)
+        hidden, cache_rnn= rnn_forward(w2v, h0, Wx, Wh, b)
+        out, cache_t_affine = temporal_affine_forward(hidden, W_vocab, b_vocab)
+        loss, dsmx = temporal_softmax_loss(out, captions_out, mask, verbose=False)
+        
+        dout, grads['W_vocab'], grads['b_vocab']=temporal_affine_backward(dsmx, cache_t_affine)
+        dout, dout_h0, grads['Wx'], grads['Wh'], grads['b']=  rnn_backward(dout, cache_rnn)
+        grads['W_embed']=word_embedding_backward(dout,cache_embed)
+        dout, grads['W_proj'], grads['b_proj']=affine_backward(dout_h0, cache_affine)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -216,7 +224,21 @@ class CaptioningRNN:
         ###########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        h0, cache = affine_forward(features, W_proj, b_proj)
+        start_token, cache = word_embedding_forward(captions, W_embed)
+        new_h, cache = rnn_step_forward(start_token[:, self._start, :], h0, Wx, Wh, b)
+        t=self._start+1
+        out_layer, cache=affine_forward(new_h, W_vocab, b_vocab)
+        for i in range(N):
+          captions[i, 0] = np.argmax(out_layer[i])     
+        new_x, cache =word_embedding_forward(captions, W_embed)
+        for j in range(1, max_length-1):
+          new_h, cache = rnn_step_forward(new_x[:, t, :], new_h, Wx, Wh, b)
+          t+=1
+          out_layer, cache = affine_forward(new_h, W_vocab, b_vocab)
+          for i in range(N):
+            captions[i, j]= np.argmax(out_layer[i])
+          new_x, cache = word_embedding_forward(captions, W_embed)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################

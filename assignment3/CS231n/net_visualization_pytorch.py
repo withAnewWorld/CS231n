@@ -34,7 +34,22 @@ def compute_saliency_maps(X, y, model):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    scores = model(X)
+    max_scores, _ = torch.max(scores, dim=1, keepdim=True)
+    correct_scores = scores.gather(1, y.view(-1, 1)).squeeze()
+    loss = torch.sum(max_scores/correct_scores)
+    loss.backward()
+    saliency, _ = torch.max(X.grad.data.abs(), dim=1)
+
+
+    # N= y.shape
+    # scores = model(X)
+    # correct_scores = scores.gather(1, y.view(-1, 1)).squeeze()
+    # max_scores, _ = torch.max(scores, dim=1, keepdim=True)
+    # loss_i = max_scores/correct_scores
+    # loss = torch.sum(loss_i)
+    # loss.backward()
+    # saliency, _ = torch.max(X.grad.data.abs(), dim=1)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -75,8 +90,19 @@ def make_fooling_image(X, target_y, model):
     # You can print your progress over iterations to check your algorithm.       #
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+        
+    T = 100
+    for t in range(T):
+      scores = model(X_fooling)
+      if torch.argmax(scores, dim=1) == target_y:
+        break
+      scores[0, target_y].backward()
+      if t%10==0:
+        print("Iteration: %d/%d, maxscore: %f, score_y: %f"%(t, T, torch.max(scores), scores[0, target_y]))
+      with torch.no_grad():
+        dX=learning_rate*X_fooling.grad/torch.sum(X_fooling.grad**2)
+        X_fooling.data += dX.data
+        X_fooling.grad= None
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -93,8 +119,15 @@ def class_visualization_update_step(img, model, target_y, l2_reg, learning_rate)
     # Be very careful about the signs of elements in your code.            #
     ########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+  
+    scores = model(img)
+    reg=l2_reg*torch.sum(img**2)
+    max_goal = scores[0, target_y] - reg
+    max_goal.backward()
+    with torch.no_grad():
+      img += learning_rate*img.grad
+      img.grad = None
+    
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ########################################################################

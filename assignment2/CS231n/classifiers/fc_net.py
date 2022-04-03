@@ -2,6 +2,7 @@ from builtins import range
 from builtins import object
 import numpy as np
 
+
 from ..layers import *
 from ..layer_utils import *
 
@@ -74,7 +75,24 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        dims = hidden_dims
+        dims.insert(0, input_dim)
+        dims.append(num_classes)
+
+        if self.normalization != None:
+          for i in range (self.num_layers):
+            self.params['W%d'%(i+1)] = np.random.normal(0, scale=weight_scale, size=(dims[i], dims[i+1]))
+            self.params['b%d'%(i+1)] = np.zeros(dims[i+1])
+            if i==self.num_layers-1:
+              break
+            self.params['gamma%d'%(i+1)] = np.ones(dims[i+1])
+            self.params['beta%d'%(i+1)] = np.zeros(dims[i+1])
+            
+
+        else:
+          for i in range (self.num_layers):
+            self.params['W%d'%(i+1)] = np.random.normal(0, scale=weight_scale, size=(dims[i], dims[i+1]))
+            self.params['b%d'%(i+1)] = np.zeros(dims[i+1])
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -147,9 +165,29 @@ class FullyConnectedNet(object):
         # layer, etc.                                                              #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        
+        X=X.reshape(X.shape[0],-1)
+        N, D = X.shape
+        out = X
+        cache={}
+        dropout_cache={}
+        
+        if self.normalization!=None:
+          for i in range(self.num_layers-1): # affien-bn-relu forward
+            out, cache[i]=affine_bn_relu_forward(out, 
+            self.params['W%d'%(i+1)], self.params['b%d'%(i+1)], 
+            self.params['gamma%d'%(i+1)], self.params['beta%d'%(i+1)], self.bn_params[i])
+            if self.use_dropout: #affine-bn-relu-dropout forward
+              out, dropout_cache[i]= dropout_forward(out, self.dropout_param)  
 
-        pass
-
+        else:  
+          for i in range(self.num_layers-1): # affine-relu forward
+            out, cache[i]= affine_relu_forward(out, self.params['W%d'%(i+1)], self.params['b%d'%(i+1)])
+            if self.use_dropout: #affine-relu-dropout forward
+              out, dropout_cache[i]= dropout_forward(out, self.dropout_param)    
+            
+        scores, cache[self.num_layers-1] = affine_forward(out, self.params['W%d'%(self.num_layers)], self.params['b%d'%(self.num_layers)])  
+        
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -174,9 +212,37 @@ class FullyConnectedNet(object):
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        
+        loss, dsmx= softmax_loss(scores, y)
+       
+        for i in range(self.num_layers): #L2 regularization 
+          loss += (0.5*self.reg)*np.sum(self.params['W%d'%(i+1)]**2)
 
-        pass
+        ##############################backward#######################################  
 
+        dout, grads['W%d'%(self.num_layers)], grads['b%d'%(self.num_layers)]=affine_backward(dsmx, cache[self.num_layers-1])
+        grads['W%d'%(self.num_layers)] += self.reg*self.params['W%d'%(self.num_layers)]
+        
+        if self.use_dropout:   
+          for i in range(self.num_layers-1, 0, -1):
+            dout= dropout_backward(dout, dropout_cache[i-1])
+            if self.normalization != None:  #affine-batch_norm-relu-drop_out backward
+              dout, grads['W%d'%(i)], grads['b%d'%(i)], grads['gamma%d'%(i)], grads['beta%d'%(i)] = affine_bn_relu_backward(dout, cache[i-1])
+              grads['W%d'%(i)]+=self.reg*self.params['W%d'%(i)]
+            else:  #affine-relu-drop_out backward
+              dout, grads['W%d'%(i)], grads['b%d'%(i)] = affine_relu_backward(dout, cache[i-1])
+              grads['W%d'%(i)]+=self.reg*self.params['W%d'%(i)]
+
+        elif self.normalization!=None:   # affine-batch_norm-relu backward
+          for i in range(self.num_layers-1, 0, -1):
+            dout, grads['W%d'%(i)], grads['b%d'%(i)], grads['gamma%d'%(i)], grads['beta%d'%(i)] = affine_bn_relu_backward(dout, cache[i-1])
+            grads['W%d'%(i)]+=self.reg*self.params['W%d'%(i)]
+
+        else:    #affine-relu backward
+          for i in range(self.num_layers-1, 0, -1):
+            dout, grads['W%d'%(i)], grads['b%d'%(i)] = affine_relu_backward(dout, cache[i-1])
+            grads['W%d'%(i)]+=self.reg*self.params['W%d'%(i)]
+            
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #

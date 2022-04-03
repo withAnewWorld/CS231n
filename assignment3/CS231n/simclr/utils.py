@@ -36,8 +36,9 @@ def train(model, data_loader, train_optimizer, epoch, epochs, batch_size=32, tem
         # Run x_i and x_j through the model to get out_left, out_right.              #
         # Then compute the loss using simclr_loss_vectorized.                        #
         ##############################################################################
-        
-        
+        h_i, out_left = model.forward(x_i)
+        h_j, out_right = model.forward(x_j)
+        loss =simclr_loss_vectorized(out_left, out_right, tau=temperature, device='cuda')
         ##############################################################################
         #                               END OF YOUR CODE                             #
         ##############################################################################

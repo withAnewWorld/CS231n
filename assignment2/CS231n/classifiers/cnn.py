@@ -62,9 +62,52 @@ class ThreeLayerConvNet(object):
         # the start of the loss() function to see how that happens.                #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        C, H, W = input_dim
+        F=num_filters
+        HH, WW = filter_size, filter_size
+        stride_conv =1 
+        pad= (filter_size - 1) // 2
+        H_out = int(1 + (H + 2 * pad - HH) / stride_conv)
+        W_out = int(1 + (W + 2 * pad - WW) / stride_conv)
 
-        pass
+        pool_height= 2
+        pool_width= 2
+        stride_pool = 2
+        H_pool = int(1 + (H_out - pool_height) / stride_pool)
+        W_pool = int(1 + (W_out - pool_width) / stride_pool)
 
+
+        self.params['W1']=np.random.normal(0, scale=weight_scale, size= (F, C, HH, WW))
+        self.params['b1']=np.zeros(F)
+
+        self.params['W2']=np.random.normal(0, scale=weight_scale, size= (F*H_pool*W_pool, hidden_dim))
+        self.params['b2']=np.zeros(hidden_dim)
+
+        self.params['W3']=np.random.normal(0, scale=weight_scale, size= (hidden_dim, num_classes))
+        self.params['b3']=np.zeros(num_classes)
+        
+        
+        # C, H, W = input_dim
+        # F = num_filters
+        # HH, WW = filter_size, filter_size
+        # stride = 1
+        # pad = (filter_size - 1) // 2
+        # pool_height= 2
+        # pool_width = 2
+        # H_out = int(1 + (H + 2 * pad - HH) / stride)
+        # W_out = int(1 + (W + 2 * pad - WW) / stride)
+        # stride=2        
+        # H_pool = int(1 + (H_out - pool_height) / stride)
+        # W_pool = int(1 + (W_out - pool_width) / stride)
+
+        # self.params['W1']=np.random.normal(0, scale=weight_scale, size =(F, C, HH, WW))
+        # self.params['b1']=np.zeros(F)
+        
+        # self.params['W2']=np.random.normal(0, scale=weight_scale, size=(F*H_pool*W_pool,hidden_dim))
+        # self.params['b2']=np.zeros(hidden_dim)
+        
+        # self.params['W3']=np.random.normal(0, scale=weight_scale, size=(hidden_dim, num_classes))
+        # self.params['b3']=np.zeros(num_classes)
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -101,8 +144,17 @@ class ThreeLayerConvNet(object):
         # cs231n/layer_utils.py in your implementation (already imported).         #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        cache = {}
+        out, cache[0]=conv_relu_pool_forward(X, self.params['W1'], self.params['b1'], conv_param, pool_param)
+        out, cache[1] = affine_relu_forward(out, self.params['W2'], self.params['b2'])
+        scores, cache[2] = affine_forward(out, self.params['W3'], self.params['b3'])
 
-        pass
+        # cache={}
+        
+        # out, cache[0] = conv_relu_pool_forward(X, self.params['W1'], self.params['b1'], conv_param, pool_param)
+        # out, cache[1] = affine_relu_forward(out, self.params['W2'], self.params['b2'])
+        # scores, cache[2] = affine_forward(out, self.params['W3'], self.params['b3'])
+        
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -124,9 +176,37 @@ class ThreeLayerConvNet(object):
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        loss, dsmx = softmax_loss(scores, y)
+        loss += 0.5*self.reg*np.sum(self.params['W1']**2)
+        loss += 0.5*self.reg*np.sum(self.params['W2']**2)        
+        loss += 0.5*self.reg*np.sum(self.params['W3']**2)
+        
+        # loss, dsmx = softmax_loss(scores, y)
+        # loss += 0.5*self.reg*np.sum(self.params['W1']**2)
+        # loss += 0.5*self.reg*np.sum(self.params['W2']**2)
+        # loss += 0.5*self.reg*np.sum(self.params['W3']**2)
 
-        pass
+        ############################backward########################################
 
+        dout, grads['W3'], grads['b3'] = affine_backward(dsmx, cache[2])
+        grads['W3'] += self.reg*self.params['W3']
+
+        dout, grads['W2'], grads['b2'] = affine_relu_backward(dout, cache[1])
+        grads['W2'] += self.reg*self.params['W2']
+
+        dout, grads['W1'], grads['b1'] =conv_relu_pool_backward(dout, cache[0])
+        grads['W1'] += self.reg*self.params['W1']
+
+        # dout, grads['W3'], grads['b3']=affine_backward(dsmx, cache[2])
+        # grads["W3"] +=self.reg*self.params['W3']
+        
+        # dout, grads['W2'], grads['b2'] = affine_relu_backward(dout, cache[1])
+        # grads["W2"] +=self.reg*self.params['W2']
+
+        # dout, grads['W1'], grads['b1'] = conv_relu_pool_backward(dout, cache[0])
+        # grads["W1"] +=self.reg*self.params['W1']
+        
+        
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
